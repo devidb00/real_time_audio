@@ -32,27 +32,28 @@ def add_header_to_chunk(audio_bytes, header):
         with wave.open(wave_bytes_io, 'wb') as wave_file:
             wave_file.setparams(header)
             wave_file.writeframes(audio_bytes)
-        
-    # Getting the complete wave bytes (header + data)
-    complete_wave_bytes = wave_bytes_io.getvalue()
+        # Getting the complete wave bytes (header + data)
+        complete_wave_bytes = wave_bytes_io.getvalue()
     return complete_wave_bytes
 
 async def audio_receiver(websocket, path, global_header=r''):
     async for message in websocket:
-        with open(f'./backend/data/audio_{message[0]}.wav', 'wb') as f:
-            f.write(message)
+        is_header = True
         try:
-            audio_bytes = io.BytesIO(message)
-            audio_segment = AudioSegment.from_file(audio_bytes, format='wav')
-            audio_to_transcript = convert_bytes_to_whisper_format(audio_segment)
-
-            transcript = model.transcribe(audio_to_transcript)
-            print(transcript['text'])
+            global_header = extract_wave_header_and_params(message)
         except:
-            print('No header')
+            is_header = False
+
+        if is_header == False:
+            message = add_header_to_chunk(message, global_header)
+
+        audio_bytes = io.BytesIO(message) 
+        audio_segment = AudioSegment.from_file(audio_bytes)
+        audio = convert_bytes_to_whisper_format(audio_segment)
+        transcript = model.transcribe(audio)
 
     # Send back the transcription or acknowledge receipt
-    await websocket.send("Transcription received or Transcript text")
+    await websocket.send(transcript['text'])
 
 start_server = websockets.serve(audio_receiver, "localhost", 8000)
 
